@@ -1,146 +1,119 @@
-import iziToast from "izitoast";
-import "izitoast/dist/css/iziToast.min.css";
-import SimpleLightbox from "simplelightbox";
-import "simplelightbox/dist/simple-lightbox.min.css";
-import { getImages } from "./js/pixabay-api";
-import { renderImage } from "./js/render-functions";
+import getPhotosByText from './js/pixabay-api';
+import templatePhotos from './js/render-functions';
 
+import iziToast from 'izitoast';
+import 'izitoast/dist/css/iziToast.min.css';
+import SimpleLightbox from 'simplelightbox';
+import 'simplelightbox/dist/simple-lightbox.min.css';
 
-const loadMoreBtn = document.querySelector('.load-more-btn');
-const form = document.querySelector('.search-form');
-const input = document.querySelector('.search-input');
-const list = document.querySelector('.gallery');
-const loader = document.querySelector('.loader')
+const refs = {
+  searchForm: document.querySelector('.form'),
+  loader: document.querySelector('.loader'),
+  listImages: document.querySelector('ul.gallery'),
+  btnLoadMore: document.querySelector('.btn-load-more'),
+};
 
-let currentPage;
-let currentQuery = '';
+let page;
+let query;
 let maxPage;
-const perPage = 15;
 
-let lightbox = new SimpleLightbox('.gallery a', {
-  captions: true,
-  captionDelay: 250,
-  captionPosition: 'bottom',
-  captionsData: 'alt',
-});
+refs.searchForm.addEventListener('submit', handleFormSubmit);
+refs.btnLoadMore.addEventListener('click', handleLoadMoreClick);
 
-
-
-form.addEventListener('submit', async (event) => {
+async function handleFormSubmit(event) {
   event.preventDefault();
-  currentQuery = event.target.elements.query.value.trim();
-  currentPage = 1;
-
-  showLoader();
   hideLoadBtn();
-  list.innerHTML = '';
+  query = refs.searchForm.elements.text.value.trim();
 
-  if (currentQuery === '') {
-    iziToast.error({
-      position: "topRight",
-      message: 'Please enter some text',
-    });
-    hideLoader();
+  if (!query) {
+    showError('Empty field');
     return;
   }
 
-  try {
-    const data = await getImages(currentQuery, currentPage);
-    maxPage = Math.ceil(data.totalHits / perPage);
-
-    if (data.hits && data.hits.length > 0) {
-      const markup = renderImage(data.hits);
-      list.insertAdjacentHTML("beforeend", markup);
-
-      hideLoader();
-      hideLoadBtn();
-
-      lightbox.refresh();
-    } else {
-      iziToast.error({
-        position: "topRight",
-        message: 'Sorry, there are no images matching your search query. Please try again!',
-      })
-      hideLoader();
-      hideLoadBtn();
-    }
-  } catch (err) {
-    console.log(err);
-    hideLoadBtn();
-    hideLoader();
-    iziToast.error({
-      position: "topRight",
-      message: 'Sorry, the request can\'t be completed at this time. Please try again',
-    })
-  }
-
-  input.value = '';
-  updateBtnStatus();
-});
-
-
-loadMoreBtn.addEventListener('click', async () => {
-  currentPage++;
+  page = 1;
+  refs.listImages.innerHTML = '';
   showLoader();
-  hideLoadBtn();
 
   try {
-    const data = await getImages(currentQuery, currentPage);
-    const markup = renderImage(data.hits);
-    list.insertAdjacentHTML("beforeend", markup);
-    lightbox.refresh();
-    scrollPage();
+    const data = await getPhotosByText(query, page);
+    if (data.hits.length === 0) {
+      showError(
+        'Sorry, there are no images matching your search query. Please try again!'
+      );
+    }
+    maxPage = Math.ceil(data.totalHits / 15);
+    renderPhotos(data.hits);
   } catch (err) {
-    console.log(err);
-    iziToast.error({
-      position: "bottomRight",
-      message: 'Sorry, the request can\'t be completed at this time. Please try again',
-    })
+    showError(err);
   }
 
+  lightbox.refresh();
   hideLoader();
-  updateBtnStatus();
-});
+  checkBtnVisibleStatus();
 
+  refs.searchForm.reset();
+}
+
+async function handleLoadMoreClick() {
+  page += 1;
+  showLoader();
+
+  try {
+    const data = await getPhotosByText(query, page);
+    renderPhotos(data.hits);
+  } catch (err) {
+    showError(err);
+  }
+
+  lightbox.refresh();
+  hideLoader();
+  checkBtnVisibleStatus();
+
+  const height =
+    refs.listImages.firstElementChild.getBoundingClientRect().height;
+  window.scrollBy({ top: 2 * height, behavior: 'smooth' });
+}
+
+function renderPhotos(objPhotos) {
+  const markup = templatePhotos(objPhotos);
+  refs.listImages.insertAdjacentHTML('beforeend', markup);
+}
 
 function showLoadBtn() {
-  loadMoreBtn.classList.remove('visually-hidden');
+  refs.btnLoadMore.classList.remove('hidden');
 }
 
 function hideLoadBtn() {
-  loadMoreBtn.classList.add('visually-hidden');
+  refs.btnLoadMore.classList.add('hidden');
 }
 
-function showLoader() {
-  loader.classList.remove('visually-hidden');
-}
-
-function hideLoader() {
-  loader.classList.add('visually-hidden');
-}
-
-function updateBtnStatus() {
-  if (currentPage >= maxPage) {
+function checkBtnVisibleStatus() {
+  if (page >= maxPage) {
     hideLoadBtn();
-
-    if (maxPage) {
-      iziToast.info({
-        position: "bottomRight",
-        message: 'We\'re sorry, but you\'ve reached the end of search results',
-      })
-    hideLoadBtn();
-    }
+    showError("We're sorry, but you've reached the end of search results.");
   } else {
     showLoadBtn();
   }
 }
 
-function scrollPage() {
-  const liElem = list.children[0];
-  const height = liElem.getBoundingClientRect().height;
+function showLoader() {
+  refs.loader.classList.remove('hidden');
+}
 
-  scrollBy({
-    top: height * 2,
-    behavior: "smooth",
+function hideLoader() {
+  refs.loader.classList.add('hidden');
+}
+
+function showError(msg) {
+  iziToast.error({
+    messageColor: 'white',
+    color: '#EF4040',
+    position: 'topRight',
+    message: msg,
   });
 }
+
+const lightbox = new SimpleLightbox('.gallery a', {
+  captionsData: 'alt',
+  captionDelay: 250,
+});
